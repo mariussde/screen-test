@@ -5,10 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Debulk Data</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script>
+        // Refresh the page every 5 minutes (300000 milliseconds)
+        function autoRefresh() {
+            window.location.reload();
+        }
+        setInterval(autoRefresh, 300000);
+        
+        // Display current time and countdown to next refresh
+        function updateTimer() {
+            const now = new Date();
+            const timeDisplay = document.getElementById('current-time');
+            timeDisplay.textContent = now.toLocaleTimeString();
+            
+            const nextRefresh = new Date(Math.ceil(now.getTime() / 300000) * 300000);
+            const timeLeft = Math.floor((nextRefresh - now) / 1000);
+            const refreshDisplay = document.getElementById('refresh-countdown');
+            refreshDisplay.textContent = `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`;
+        }
+        setInterval(updateTimer, 1000);
+    </script>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-6 text-gray-800">Debulk Operations Data</h1>
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Debulk Operations Data</h1>
+            <div class="text-sm text-gray-600">
+                <div>Current Time: <span id="current-time"></span></div>
+                <div>Next Refresh: <span id="refresh-countdown"></span></div>
+            </div>
+        </div>
+        
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
@@ -34,9 +61,6 @@
                     </tbody>
                 </table>
             </div>
-        </div>
-        <div class="mt-4 text-sm text-gray-600">
-            Last updated: {{ datetime.now().strftime('%Y-%m-%d %H:%M:%S') }}
         </div>
     </div>
 </body>

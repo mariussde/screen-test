@@ -1,43 +1,29 @@
 from flask import Flask, render_template
-import pyodbc
-import pandas as pd
+import requests
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Database configuration
-DB_CONFIG = {
-    'server': 'sqlexpressva.c2xw7rscu4uh.us-east-1.rds.amazonaws.com',
-    'database': 'Prima',
-    'username': 'mlefter_dbeaver',
-    'password': 'lefter01',
-    'port': '1433'
-}
+# API endpoint URL - replace with your actual API URL
+API_URL = "your_api_endpoint_here"
 
-def get_db_connection():
-    conn_str = (
-        f"DRIVER={{SQL Server}};"
-        f"SERVER={DB_CONFIG['server']},{DB_CONFIG['port']};"
-        f"DATABASE={DB_CONFIG['database']};"
-        f"UID={DB_CONFIG['username']};"
-        f"PWD={DB_CONFIG['password']}"
-    )
-    return pyodbc.connect(conn_str)
+def get_data_from_api():
+    try:
+        response = requests.get(API_URL)
+        return response.json()
+    except Exception as e:
+        print(f"Error fetching data: {str(e)}")
+        return []
 
 @app.route('/')
 def index():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("EXEC dbo.sp_Debulk_Today 'PLL', 'GREER'")
-        rows = cursor.fetchall()
-        columns = [column[0] for column in cursor.description]
-        data = [dict(zip(columns, row)) for row in rows]
-        cursor.close()
-        conn.close()
-        
-        return render_template('index.html', data=data, columns=columns, datetime=datetime)
-    
+        data = get_data_from_api()
+        if data:
+            # Get column names from the first record
+            columns = list(data[0].keys())
+            return render_template('index.html', data=data, columns=columns, datetime=datetime)
+        return "No data available"
     except Exception as e:
         return f"An error occurred: {str(e)}"
 
