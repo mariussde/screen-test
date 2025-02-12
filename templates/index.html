@@ -3,65 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debulk Data</title>
+    <title>Tipper Room Display</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .offline {
+            background-color: #ffebee;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ef5350;
+        }
+        .online {
+            background-color: #e8f5e9;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #66bb6a;
+        }
+    </style>
     <script>
-        // Refresh the page every 5 minutes (300000 milliseconds)
-        function autoRefresh() {
-            window.location.reload();
+        function refreshPage() {
+            location.reload();
         }
-        setInterval(autoRefresh, 300000);
         
-        // Display current time and countdown to next refresh
-        function updateTimer() {
-            const now = new Date();
-            const timeDisplay = document.getElementById('current-time');
-            timeDisplay.textContent = now.toLocaleTimeString();
-            
-            const nextRefresh = new Date(Math.ceil(now.getTime() / 300000) * 300000);
-            const timeLeft = Math.floor((nextRefresh - now) / 1000);
-            const refreshDisplay = document.getElementById('refresh-countdown');
-            refreshDisplay.textContent = `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`;
-        }
-        setInterval(updateTimer, 1000);
+        // Refresh the page every 30 seconds
+        setInterval(refreshPage, 30000);
     </script>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
         <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold text-gray-800">Debulk Operations Data</h1>
+            <h1 class="text-3xl font-bold text-gray-800">Tipper Room Display</h1>
             <div class="text-sm text-gray-600">
-                <div>Current Time: <span id="current-time"></span></div>
-                <div>Next Refresh: <span id="refresh-countdown"></span></div>
+                <!-- <div>Current Time: <span id="current-time"></span></div> -->
+                <!-- <div>Next Refresh: <span id="refresh-countdown"></span></div> -->
             </div>
         </div>
         
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            {% for column in columns %}
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                {{ column }}
-                            </th>
-                            {% endfor %}
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        {% for row in data %}
-                        <tr class="hover:bg-gray-50">
-                            {% for column in columns %}
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {{ row[column] }}
-                            </td>
-                            {% endfor %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        {% if connection_status %}
+            <div class="{{ 'online' if connection_status.is_connected else 'offline' }}">
+                Connection Status: {{ 'Online' if connection_status.is_connected else 'Offline' }}
+                {% if connection_status.last_successful %}
+                    <br>Last Successful Update: {{ connection_status.last_successful.strftime('%Y-%m-%d %H:%M:%S') }}
+                {% endif %}
             </div>
-        </div>
+        {% endif %}
+
+        {% if error %}
+            <div class="offline">{{ error }}</div>
+        {% endif %}
+
+        {% if data %}
+            <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                {% for column in columns %}
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    {{ column }}
+                                </th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for row in data %}
+                            <tr class="hover:bg-gray-50">
+                                {% for column in columns %}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ row[column] }}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endif %}
     </div>
 </body>
 </html>
