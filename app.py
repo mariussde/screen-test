@@ -6,6 +6,11 @@ import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import threading
+import urllib3
+
+# Disable SSL verification warning, ask valerio if there's a good way of handling ssl verification
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
@@ -18,8 +23,10 @@ AUTH_CONFIG = {
     'password': 'NeXOD2Owu#en2ku9oti4'
 }
 
-# API endpoint URL for tipper room display
+# API endpoint config
 API_URL = "https://us.prima.pacorini.com/api/v1.0/Prima/tipperRoomDisplay"
+COMPID = 'PLL'
+WHID = '200NORDIC' # 'GREER' or '200NORDIC'
 
 # Global variables for connection status and data
 connection_status = {"is_connected": True, "last_successful": None}
@@ -95,7 +102,9 @@ def get_tipper_room_data() -> Optional[Dict[str, Any]]:
         }
         
         params = {
-            'token': access_token
+            'token': access_token,
+            'CompID': COMPID,
+            'WHID': WHID,
         }
         
         response = session.get(
