@@ -31,7 +31,12 @@ WHID = '200NORDIC' # 'GREER' or '200NORDIC'
 
 # Global variables for connection status and data
 connection_status = {"is_connected": True, "last_successful": None}
-cached_data = {"data": None, "timestamp": None}
+cached_data = {
+    "data": None, 
+    "timestamp": None,
+    "data_summary": None, 
+    "summary_timestamp": None
+}
 
 # Configure retry strategy
 retry_strategy = Retry(
@@ -87,10 +92,13 @@ def get_access_token() -> Optional[str]:
         print(f"Error getting access token: {str(e)}")
         return None
 
-def get_tipper_room_data() -> Optional[Dict[str, Any]]:
+def get_tipper_room_data(dataset='DataSet1') -> Optional[Dict[str, Any]]:
     """
     Fetch tipper room display data using authentication token.
     Returns None if either token retrieval or data fetch fails.
+    
+    Parameters:
+        dataset (str): Which dataset to request ('DataSet1' or 'DataSet2')
     """
     try:
         access_token = get_access_token()
@@ -106,6 +114,7 @@ def get_tipper_room_data() -> Optional[Dict[str, Any]]:
             'token': access_token,
             'CompID': COMPID,
             'WHID': WHID,
+            'DataSet': dataset
         }
         
         response = session.get(
@@ -117,21 +126,25 @@ def get_tipper_room_data() -> Optional[Dict[str, Any]]:
         response.raise_for_status()
         
         data = response.json()
-
         
         # Update connection status and cached data
         connection_status["is_connected"] = True
         connection_status["last_successful"] = datetime.now()
-        cached_data["data"] = data
-        cached_data["timestamp"] = datetime.now()
+        
+        # Store in the appropriate cache based on dataset
+        if dataset == 'DataSet1':
+            cached_data["data"] = data
+            cached_data["timestamp"] = datetime.now()
+        elif dataset == 'DataSet2':
+            cached_data["data_summary"] = data
+            cached_data["summary_timestamp"] = datetime.now()
         
         return data
         
     except Exception as e:
-        print(f"Error fetching tipper room data: {str(e)}")
+        print(f"Error fetching tipper room data ({dataset}): {str(e)}")
         connection_status["is_connected"] = False
         return None
-
 
 def background_data_refresh():
     """Background task to continuously refresh data."""
@@ -142,7 +155,9 @@ def background_data_refresh():
             continue
             
         try:
-            get_tipper_room_data()
+            # Get both datasets
+            get_tipper_room_data('DataSet1')
+            get_tipper_room_data('DataSet2')
         except Exception as e:
             print(f"Error in background refresh: {str(e)}")
         
@@ -160,7 +175,7 @@ def index():
             (current_time - cached_data["timestamp"]).seconds < 60):
             data = cached_data["data"]
         else:
-            data = get_tipper_room_data()
+            data = get_tipper_room_data('DataSet1')
             
         if not data:
             return render_template(
@@ -189,6 +204,110 @@ def index():
     except Exception as e:
         return render_template(
             'index.html',
+            error=f"An error occurred: {str(e)}",
+            connection_status=connection_status,
+            datetime=datetime
+        )
+
+@app.route('/analytics')
+def analytics():
+    """Analytics route handler that displays table data and key statistics."""
+    try:
+        # Use cached data if available and recent
+        current_time = datetime.now()
+        # Get main dataset
+        if (cached_data["data"] and cached_data["timestamp"] and 
+            (current_time - cached_data["timestamp"]).seconds < 60):
+            data = cached_data["data"]
+        else:
+            data = get_tipper_room_data('DataSet1')
+        
+        # Get summary dataset
+        if (cached_data["data_summary"] and cached_data["summary_timestamp"] and 
+            (current_time - cached_data["summary_timestamp"]).seconds < 60):
+            summary_data = cached_data["data_summary"]
+        else:
+            summary_data = get_tipper_room_data('DataSet2')
+        
+        if not data:
+            return render_template(
+                'analytics.html',
+                error="Unable to retrieve tipper room data. Attempting to reconnect...",
+                connection_status=connection_status,
+                datetime=datetime
+            )
+
+        # Ensure data is a list
+        data_list = data if isinstance(data, list) else [data]
+        
+        # Get column names from the first record if data is a list
+        if data_list:
+            columns = list(data_list[0].keys())
+        else:
+            columns = []
+        
+        # Process summary data
+        summary_list = summary_data if isinstance(summary_data, list) else [summary_data]
+        if summary_list:
+            summary_columns = list(summary_list[0].keys())
+        else:
+            summary_columns = []
+        
+        # Initialize key statistics
+        max_gross_weight = "N/A"
+        average_runtime_minutes = "N/A"
+        runtime_minutes_over_80 = 0
+
+        # Extract and calculate from data if available
+        try:
+            if data_list:
+                # Extract gross weights if available
+                weights = []
+                for item in data_list:
+                    if 'Gross Wgt' in item and item['Gross Wgt']:
+                        try:
+                            weight = float(item['Gross Wgt'])
+                            weights.append(weight)
+                        except (ValueError, TypeError):
+                            pass
+                
+                if weights:
+                    max_gross_weight = f"{max(weights):,.2f} kg"
+                
+                # Extract runtime minutes if available
+                runtimes = []
+                for item in data_list:
+                    if 'Runtime Minutes' in item and item['Runtime Minutes']:
+                        try:
+                            runtime = float(item['Runtime Minutes'])
+                            runtimes.append(runtime)
+                        except (ValueError, TypeError):
+                            pass
+                
+                if runtimes:
+                    average_runtime_minutes = f"{sum(runtimes) / len(runtimes):.1f} min"
+                    runtime_minutes_over_80 = sum(1 for runtime in runtimes if runtime > 80)
+        except Exception as stat_error:
+            print(f"Error calculating statistics: {str(stat_error)}")
+        
+        return render_template(
+            'analytics.html',
+            data=data_list,
+            columns=columns,
+            summary_data=summary_list,
+            summary_columns=summary_columns,
+            max_gross_weight=max_gross_weight,
+            average_runtime_minutes=average_runtime_minutes,
+            runtime_minutes_over_80=runtime_minutes_over_80,
+            connection_status=connection_status,
+            datetime=datetime
+        )
+    
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return render_template(
+            'analytics.html',
             error=f"An error occurred: {str(e)}",
             connection_status=connection_status,
             datetime=datetime
@@ -309,93 +428,6 @@ def process_chart_data(data: List[Dict[str, Any]]) -> Dict[str, Any]:
     chart_data['doughnutChart']['datasets'][0]['data'] = list(category_counts.values())
 
     return chart_data
-
-@app.route('/analytics')
-def analytics():
-    """Analytics route handler that displays table data and key statistics."""
-    try:
-        # Use cached data if available and recent
-        current_time = datetime.now()
-        if (cached_data["data"] and cached_data["timestamp"] and 
-            (current_time - cached_data["timestamp"]).seconds < 60):
-            data = cached_data["data"]
-        else:
-            data = get_tipper_room_data()
-        
-        if not data:
-            return render_template(
-                'analytics.html',
-                error="Unable to retrieve tipper room data. Attempting to reconnect...",
-                connection_status=connection_status,
-                datetime=datetime
-            )
-
-        # Ensure data is a list
-        data_list = data if isinstance(data, list) else [data]
-        
-        # Get column names from the first record if data is a list
-        if data_list:
-            columns = list(data_list[0].keys())
-        else:
-            columns = []
-        
-        # Initialize key statistics
-        max_gross_weight = "N/A"
-        average_runtime_minutes = "N/A"
-        runtime_minutes_over_80 = 0
-
-        # Extract and calculate from data if available
-        try:
-            if data_list:
-                # Extract gross weights if available
-                weights = []
-                for item in data_list:
-                    if 'Gross Wgt' in item and item['Gross Wgt']:
-                        try:
-                            weight = float(item['Gross Wgt'])
-                            weights.append(weight)
-                        except (ValueError, TypeError):
-                            pass
-                
-                if weights:
-                    max_gross_weight = f"{max(weights):,.2f} kg"
-                
-                # Extract runtime minutes if available
-                runtimes = []
-                for item in data_list:
-                    if 'Runtime Minutes' in item and item['Runtime Minutes']:
-                        try:
-                            runtime = float(item['Runtime Minutes'])
-                            runtimes.append(runtime)
-                        except (ValueError, TypeError):
-                            pass
-                
-                if runtimes:
-                    average_runtime_minutes = f"{sum(runtimes) / len(runtimes):.1f} min"
-                    runtime_minutes_over_80 = sum(1 for runtime in runtimes if runtime > 80)
-        except Exception as stat_error:
-            print(f"Error calculating statistics: {str(stat_error)}")
-        
-        return render_template(
-            'analytics.html',
-            data=data_list,
-            columns=columns,
-            max_gross_weight=max_gross_weight,
-            average_runtime_minutes=average_runtime_minutes,
-            runtime_minutes_over_80=runtime_minutes_over_80,
-            connection_status=connection_status,
-            datetime=datetime
-        )
-    
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return render_template(
-            'analytics.html',
-            error=f"An error occurred: {str(e)}",
-            connection_status=connection_status,
-            datetime=datetime
-        )
 
 if __name__ == '__main__':
     start_background_tasks()

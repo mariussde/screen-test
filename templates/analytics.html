@@ -5,44 +5,105 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tipper Room Analytics</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <style>
         .offline {
             background-color: #ffebee;
-            padding: 10px;
-            margin-bottom: 10px;
+            padding: 8px 12px;
             border: 1px solid #ef5350;
+            border-radius: 4px;
+            display: inline-block;
         }
         .online {
             background-color: #e8f5e9;
-            padding: 10px;
-            margin-bottom: 10px;
+            padding: 8px 12px;
             border: 1px solid #66bb6a;
+            border-radius: 4px;
+            display: inline-block;
         }
     </style>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold text-gray-800">Tipper Room Analytics</h1>
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
+            <div class="flex flex-col md:flex-row gap-3 items-start md:items-center">
+                
+                {% if connection_status %}
+                    <div class="{{ 'online' if connection_status.is_connected else 'offline' }} text-sm">
+                        <span class="font-medium">Status:</span> {{ 'Online' if connection_status.is_connected else 'Offline' }}
+                        {% if connection_status.last_successful %}
+                            &nbsp;•&nbsp; <span class="font-medium">Updated:</span> {{ connection_status.last_successful.strftime('%Y-%m-%d %H:%M:%S') }}
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+            
             <a href="/" class="text-blue-600 hover:text-blue-800 font-medium">View Table Display</a>
         </div>
         
-        {% if connection_status %}
-            <div class="{{ 'online' if connection_status.is_connected else 'offline' }}">
-                Connection Status: {{ 'Online' if connection_status.is_connected else 'Offline' }}
-                {% if connection_status.last_successful %}
-                    <br>Last Successful Update: {{ connection_status.last_successful.strftime('%Y-%m-%d %H:%M:%S') }}
-                {% endif %}
-            </div>
+        {% if error %}
+            <div class="offline mb-6">{{ error }}</div>
         {% endif %}
 
-        {% if error %}
-            <div class="offline">{{ error }}</div>
-        {% endif %}
+        <!-- Two-column layout for Summary Data and Statistics -->
+        <div class="flex flex-wrap md:flex-nowrap gap-4 mb-6">
+            <!-- Summary Data Section - Left Column -->
+            {% if summary_data %}
+                <div class="bg-white shadow-lg rounded-lg overflow-hidden w-full md:w-1/2">
+                    <h2 class="text-xl font-semibold px-6 py-4 bg-green-50">Summary Data (DataSet2)</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    {% for column in summary_columns %}
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {{ column }}
+                                    </th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in summary_data %}
+                                <tr class="hover:bg-gray-50">
+                                    {% for column in summary_columns %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {{ row[column] }}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endif %}
+
+            <!-- Statistics Section - Right Column -->
+            {% if data %}
+                <div class="bg-white p-6 rounded-lg shadow-lg w-full md:w-1/2 h-fit">
+                    <h2 class="text-xl font-semibold mb-4 bg-green-50 px-6 py-4 -mx-6 -mt-6">Statistics</h2>
+                    <div class="flex flex-col space-y-4">
+                        <div class="flex justify-between">
+                            <span class="font-medium">Max Gross Weight:</span>
+                            <span>{{ max_gross_weight }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="font-medium">Average Runtime Minutes:</span>
+                            <span>{{ average_runtime_minutes }}</span>
+                        </div>
+                        <div class="flex justify-between text-red-600">
+                            <span class="font-medium">Runtime Minutes Over 80:</span>
+                            <span>{{ runtime_minutes_over_80 }}</span>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
 
         <!-- Main Data Table -->
         {% if data %}
             <div class="bg-white shadow-lg rounded-lg overflow-hidden mb-6">
+                <h2 class="text-xl font-semibold px-6 py-4 bg-green-50">Main Data (DataSet1)</h2>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -66,25 +127,6 @@
                             {% endfor %}
                         </tbody>
                     </table>
-                </div>
-            </div>
-
-            <!-- Statistics Section -->
-            <div class="bg-white p-4 rounded-lg shadow-lg mb-6">
-                <h2 class="text-lg font-semibold mb-4">Statistics</h2>
-                <div class="flex flex-col space-y-2">
-                    <div class="flex justify-between">
-                        <span>Max Gross Weight:</span>
-                        <span>{{ max_gross_weight }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Average Runtime Minutes:</span>
-                        <span>{{ average_runtime_minutes }}</span>
-                    </div>
-                    <div class="flex justify-between text-red-600">
-                        <span>Runtime Minutes Over 80:</span>
-                        <span>{{ runtime_minutes_over_80 }}</span>
-                    </div>
                 </div>
             </div>
         {% endif %}
