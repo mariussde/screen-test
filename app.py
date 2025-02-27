@@ -1,12 +1,13 @@
 from flask import Flask, render_template
 import requests
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import threading
 import urllib3
+from collections import Counter, defaultdict
 
 # Disable SSL verification warning, ask valerio if there's a good way of handling ssl verification
 
@@ -114,7 +115,9 @@ def get_tipper_room_data() -> Optional[Dict[str, Any]]:
             verify=False
         )
         response.raise_for_status()
+        
         data = response.json()
+
         
         # Update connection status and cached data
         connection_status["is_connected"] = True
@@ -128,6 +131,7 @@ def get_tipper_room_data() -> Optional[Dict[str, Any]]:
         print(f"Error fetching tipper room data: {str(e)}")
         connection_status["is_connected"] = False
         return None
+
 
 def background_data_refresh():
     """Background task to continuously refresh data."""
@@ -194,6 +198,204 @@ def start_background_tasks():
     """Start background tasks when the application starts."""
     refresh_thread = threading.Thread(target=background_data_refresh, daemon=True)
     refresh_thread.start()
+
+def process_chart_data(data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Process the tipper room data into chart-friendly format."""
+    if not data:
+        return None
+
+    # Initialize chart data structure
+    chart_data = {
+        'barChart': {
+            'labels': [],
+            'datasets': [{
+                'label': 'Count',
+                'data': [],
+                'backgroundColor': [
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(54, 162, 235, 0.5)',
+                    'rgba(255, 206, 86, 0.5)',
+                    'rgba(75, 192, 192, 0.5)',
+                ],
+                'borderColor': [
+                    'rgb(255, 99, 132)',
+                    'rgb(54, 162, 235)',
+                    'rgb(255, 206, 86)',
+                    'rgb(75, 192, 192)',
+                ],
+                'borderWidth': 1
+            }]
+        },
+        'lineChart': {
+            'labels': [],
+            'datasets': [{
+                'label': 'Timeline',
+                'data': [],
+                'fill': False,
+                'borderColor': 'rgb(75, 192, 192)',
+                'tension': 0.1
+            }]
+        },
+        'pieChart': {
+            'labels': [],
+            'datasets': [{
+                'data': [],
+                'backgroundColor': [
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(54, 162, 235, 0.5)',
+                    'rgba(255, 206, 86, 0.5)',
+                    'rgba(75, 192, 192, 0.5)',
+                ],
+                'borderColor': [
+                    'rgb(255, 99, 132)',
+                    'rgb(54, 162, 235)',
+                    'rgb(255, 206, 86)',
+                    'rgb(75, 192, 192)',
+                ],
+            }]
+        },
+        'doughnutChart': {
+            'labels': [],
+            'datasets': [{
+                'data': [],
+                'backgroundColor': [
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(54, 162, 235, 0.5)',
+                    'rgba(255, 206, 86, 0.5)',
+                    'rgba(75, 192, 192, 0.5)',
+                ],
+                'borderColor': [
+                    'rgb(255, 99, 132)',
+                    'rgb(54, 162, 235)',
+                    'rgb(255, 206, 86)',
+                    'rgb(75, 192, 192)',
+                ],
+            }]
+        }
+    }
+
+    # Process data for charts
+    status_counts = Counter()
+    type_counts = Counter()
+    category_counts = Counter()
+    timeline_data = defaultdict(int)
+
+    for item in data:
+        # Update counters based on available fields
+        if 'status' in item:
+            status_counts[item['status']] += 1
+        if 'type' in item:
+            type_counts[item['type']] += 1
+        if 'category' in item:
+            category_counts[item['category']] += 1
+        if 'timestamp' in item:
+            timeline_data[item['timestamp']] += 1
+
+    # Bar Chart - Status Distribution
+    chart_data['barChart']['labels'] = list(status_counts.keys())
+    chart_data['barChart']['datasets'][0]['data'] = list(status_counts.values())
+
+    # Line Chart - Timeline
+    sorted_timeline = sorted(timeline_data.items())
+    chart_data['lineChart']['labels'] = [item[0] for item in sorted_timeline]
+    chart_data['lineChart']['datasets'][0]['data'] = [item[1] for item in sorted_timeline]
+
+    # Pie Chart - Type Distribution
+    chart_data['pieChart']['labels'] = list(type_counts.keys())
+    chart_data['pieChart']['datasets'][0]['data'] = list(type_counts.values())
+
+    # Doughnut Chart - Category Distribution
+    chart_data['doughnutChart']['labels'] = list(category_counts.keys())
+    chart_data['doughnutChart']['datasets'][0]['data'] = list(category_counts.values())
+
+    return chart_data
+
+@app.route('/analytics')
+def analytics():
+    """Analytics route handler that displays table data and key statistics."""
+    try:
+        # Use cached data if available and recent
+        current_time = datetime.now()
+        if (cached_data["data"] and cached_data["timestamp"] and 
+            (current_time - cached_data["timestamp"]).seconds < 60):
+            data = cached_data["data"]
+        else:
+            data = get_tipper_room_data()
+        
+        if not data:
+            return render_template(
+                'analytics.html',
+                error="Unable to retrieve tipper room data. Attempting to reconnect...",
+                connection_status=connection_status,
+                datetime=datetime
+            )
+
+        # Ensure data is a list
+        data_list = data if isinstance(data, list) else [data]
+        
+        # Get column names from the first record if data is a list
+        if data_list:
+            columns = list(data_list[0].keys())
+        else:
+            columns = []
+        
+        # Initialize key statistics
+        max_gross_weight = "N/A"
+        average_runtime_minutes = "N/A"
+        runtime_minutes_over_80 = 0
+
+        # Extract and calculate from data if available
+        try:
+            if data_list:
+                # Extract gross weights if available
+                weights = []
+                for item in data_list:
+                    if 'Gross Wgt' in item and item['Gross Wgt']:
+                        try:
+                            weight = float(item['Gross Wgt'])
+                            weights.append(weight)
+                        except (ValueError, TypeError):
+                            pass
+                
+                if weights:
+                    max_gross_weight = f"{max(weights):,.2f} kg"
+                
+                # Extract runtime minutes if available
+                runtimes = []
+                for item in data_list:
+                    if 'Runtime Minutes' in item and item['Runtime Minutes']:
+                        try:
+                            runtime = float(item['Runtime Minutes'])
+                            runtimes.append(runtime)
+                        except (ValueError, TypeError):
+                            pass
+                
+                if runtimes:
+                    average_runtime_minutes = f"{sum(runtimes) / len(runtimes):.1f} min"
+                    runtime_minutes_over_80 = sum(1 for runtime in runtimes if runtime > 80)
+        except Exception as stat_error:
+            print(f"Error calculating statistics: {str(stat_error)}")
+        
+        return render_template(
+            'analytics.html',
+            data=data_list,
+            columns=columns,
+            max_gross_weight=max_gross_weight,
+            average_runtime_minutes=average_runtime_minutes,
+            runtime_minutes_over_80=runtime_minutes_over_80,
+            connection_status=connection_status,
+            datetime=datetime
+        )
+    
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return render_template(
+            'analytics.html',
+            error=f"An error occurred: {str(e)}",
+            connection_status=connection_status,
+            datetime=datetime
+        )
 
 if __name__ == '__main__':
     start_background_tasks()
